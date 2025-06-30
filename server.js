@@ -37,6 +37,49 @@ app.get('/api/heroes', async (req, res) => {
         res.status(500).json({ error: 'Internal Server Error' });
     }
 });
+app.use(express.json());
+
+// swapheroes
+app.post('/api/swap-heroes', async (req, res) => {
+    let { positionId1, positionId2 } = req.body;
+    let heroId1,heroId2;
+    try {
+        console.log('Swap Request:', positionId1, positionId2);
+
+        // ดึง hero_id ของทั้งสองตำแหน่ง
+        let [rows1] = await db.query('SELECT hero_id FROM selected_heroes WHERE position_id = ?', [positionId1]);
+        let [rows2] = await db.query('SELECT hero_id FROM selected_heroes WHERE position_id = ?', [positionId2]);
+
+        if (!rows1.length || !rows2.length) {
+            console.log('One of the positions not found');
+            return res.status(404).json({ success: false, error: 'One or both positions not found in database' });
+        }
+
+         heroId1 = rows1[0].hero_id;
+         heroId2 = rows2[0].hero_id;
+
+        // สลับ hero_id ของทั้งสอง position_id
+        const [result1] = await db.query('UPDATE selected_heroes SET hero_id = ? WHERE position_id = ?', [heroId1, positionId2]);
+const [result2] = await db.query('UPDATE selected_heroes SET hero_id = ? WHERE position_id = ?', [heroId2, positionId1]);
+console.log('Update result 1:', result1);
+console.log('Update result 2:', result2);
+        // แจ้งทุก client ให้ดึงข้อมูลใหม่
+        // ส่งข้อมูลที่อัปเดตเฉพาะตำแหน่งและฮีโร่ให้ client ทุกตัว
+    
+
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ success: false, error: 'Database error' });
+    }
+    io.emit('updateSelectedHeroes', { updatedHeroes: [
+  { positionId: positionId1, heroId: heroId2 },
+  { positionId: positionId2, heroId: heroId1 }
+] });
+});
+
+
 
 // ตัวแปร Timer และ Phase
 let currentPhaseIndex = 0;
@@ -120,17 +163,29 @@ socket.on('selectHero', async (data) => {
     }
 });
 
-
-
     // ดึงข้อมูลฮีโร่ที่ถูกเลือกทั้งหมด
+    // socket.on('getSelectedHeroes', async () => {
+    //     const [rows] = await db.query(`
+    //         SELECT sh.position_id, r.id, r.name, r.img
+    //         FROM selected_heroes sh
+    //         JOIN rov r ON sh.hero_id = r.id
+    //     `);
+    //     socket.emit('initSelectedHeroes', rows);
+    // });
+
     socket.on('getSelectedHeroes', async () => {
+    try {
         const [rows] = await db.query(`
             SELECT sh.position_id, r.id, r.name, r.img
             FROM selected_heroes sh
             JOIN rov r ON sh.hero_id = r.id
         `);
-        socket.emit('initSelectedHeroes', rows);
-    });
+        socket.emit('initSelectedHeroes', rows); // ส่งให้ client อัปเดต
+    } catch (error) {
+        console.error('Error fetching selected heroes:', error);
+    }
+});
+
 
     socket.on('resetPick', async () => {
         try {
@@ -174,6 +229,9 @@ socket.on('selectHero', async (data) => {
         console.log('Client disconnected: ' + socket.id);
     });
 });
+
+
+
 
 // Start Server
 server.listen(3000, '0.0.0.0', () => console.log('Server running on port 3000'));
