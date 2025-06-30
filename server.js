@@ -8,7 +8,9 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, { cors: { origin: "*" } });
 
-app.use(cors());
+app.use(cors({
+    origin: '*', // อนุญาตทุก origin
+}));
 app.use('/Assets', express.static('/Assets')); // เสิร์ฟไฟล์ Assets
 
 // เชื่อมต่อฐานข้อมูล
